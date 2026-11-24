@@ -3,144 +3,379 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>orbmrun</title>
+  <title>Orb Run: Overdrive</title>
   <style>
-    html, body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      font-family: Arial, sans-serif;
-    }
-
-    #game {
-      display: block;
-      width: 100%;
-      height: 100%;
-      touch-action: none;
-    }
-
-    #hud {
-      position: fixed;
-      top: 14px;
-      left: 14px;
-      padding: 9px 12px;
-      color: white;
-      background: rgba(0, 0, 0, 0.55);
-      font-size: 14px;
-    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101522; color: white; font-family: Arial, sans-serif; }
+    #game { display: block; width: 100%; height: 100%; touch-action: none; }
+    #hud { position: fixed; inset: 14px 14px auto; display: flex; justify-content: space-between; gap: 12px; pointer-events: none; }
+    .panel { padding: 10px 13px; background: #101522d9; border: 1px solid #ffffff24; border-radius: 8px; font-size: 14px; line-height: 1.6; }
+    #bars { width: 220px; }
+    .bar { height: 8px; margin: 3px 0 7px; background: #30384a; border-radius: 8px; overflow: hidden; }
+    .fill { width: 100%; height: 100%; transition: width .12s; }
+    #healthFill { background: #ef5266; }
+    #xpFill { background: #6c9dff; }
+    #minimap { width: 130px; height: 130px; border-radius: 8px; background: #101522d9; border: 1px solid #ffffff24; }
+    #overlay { position: fixed; inset: 0; display: grid; place-items: center; background: #070a10b8; }
+    #card { width: min(440px, calc(100% - 32px)); padding: 24px; border: 1px solid #ffffff2b; border-radius: 12px; background: #151b29; text-align: center; }
+    #card h1 { margin: 0 0 8px; font-size: 28px; }
+    #card p { color: #c3cad8; line-height: 1.5; }
+    button { border: 0; border-radius: 7px; padding: 11px 17px; color: white; background: #557cf2; font-size: 15px; cursor: pointer; }
+    button:hover { background: #7192ff; }
+    #upgradeButtons { display: grid; gap: 9px; margin-top: 16px; }
+    .small { color: #9da8bc; font-size: 12px; }
   </style>
 </head>
 <body>
-  <div id="hud">orbs: <span id="score">0</span>/8 · move with wasd or arrow keys</div>
   <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="panel" id="bars">
+      <div>HP <span id="hpText">100</span></div>
+      <div class="bar"><div class="fill" id="healthFill"></div></div>
+      <div>XP <span id="xpText">0 / 5</span> · Level <span id="levelText">1</span></div>
+      <div class="bar"><div class="fill" id="xpFill"></div></div>
+      <div>Wave <span id="waveText">1</span> · Score <span id="scoreText">0</span></div>
+      <div class="small">WASD move · Shift dash · Space shockwave · P pause</div>
+    </div>
+    <canvas id="minimap" width="130" height="130"></canvas>
+  </div>
+
+  <div id="overlay">
+    <div id="card">
+      <h1 id="title">ORB RUN: OVERDRIVE</h1>
+      <p id="message">Survive the waves. Collect orbs. Try not to get surrounded.</p>
+      <div id="upgradeButtons"></div>
+      <button id="mainButton">Start game</button>
+      <p class="small">WASD to move · Shift to dash · Space to blast · P to pause</p>
+    </div>
+  </div>
 
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
   <script>
     const canvas = document.getElementById("game");
     const engine = new BABYLON.Engine(canvas, true);
-
     const scene = new BABYLON.Scene(engine);
-    scene.clearColor = new BABYLON.Color4(0.55, 0.78, 0.95, 1);
+    scene.clearColor = new BABYLON.Color4(0.035, 0.05, 0.09, 1);
 
-    const camera = new BABYLON.ArcRotateCamera(
-      "camera",
-      -Math.PI / 2,
-      1.05,
-      15,
-      new BABYLON.Vector3(0, 0, 0),
-      scene
-    );
+    const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, 1.05, 19, BABYLON.Vector3.Zero(), scene);
     camera.attachControl(canvas, true);
-    camera.lowerRadiusLimit = 10;
-    camera.upperRadiusLimit = 22;
+    camera.lowerRadiusLimit = 19;
+    camera.upperRadiusLimit = 19;
+    camera.inputs.removeByType("ArcRotateCameraPointersInput");
 
-    const light = new BABYLON.HemisphericLight(
-      "light",
-      new BABYLON.Vector3(0, 1, 0),
-      scene
-    );
-    light.intensity = 0.9;
+    const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+    light.intensity = 0.85;
 
-    const ground = BABYLON.MeshBuilder.CreateGround(
-      "ground",
-      { width: 20, height: 20 },
-      scene
-    );
-    const groundMaterial = new BABYLON.StandardMaterial("groundMaterial", scene);
-    groundMaterial.diffuseColor = new BABYLON.Color3(0.25, 0.58, 0.32);
-    ground.material = groundMaterial;
+    const floor = BABYLON.MeshBuilder.CreateGround("floor", { width: 30, height: 30 }, scene);
+    const floorMat = new BABYLON.StandardMaterial("floorMat", scene);
+    floorMat.diffuseColor = new BABYLON.Color3(0.10, 0.14, 0.2);
+    floorMat.specularColor = BABYLON.Color3.Black();
+    floor.material = floorMat;
 
-    const player = BABYLON.MeshBuilder.CreateBox(
-      "player",
-      { size: 1 },
-      scene
-    );
-    player.position.y = 0.5;
+    const grid = BABYLON.MeshBuilder.CreateGround("grid", { width: 30, height: 30, subdivisions: 30 }, scene);
+    const gridMat = new BABYLON.StandardMaterial("gridMat", scene);
+    gridMat.wireframe = true;
+    gridMat.emissiveColor = new BABYLON.Color3(0.12, 0.19, 0.28);
+    gridMat.alpha = 0.22;
+    grid.material = gridMat;
+    grid.position.y = 0.01;
 
-    const playerMaterial = new BABYLON.StandardMaterial("playerMaterial", scene);
-    playerMaterial.diffuseColor = new BABYLON.Color3(0.1, 0.35, 0.9);
-    player.material = playerMaterial;
-
-    const keys = {};
-    window.addEventListener("keydown", event => keys[event.key.toLowerCase()] = true);
-    window.addEventListener("keyup", event => keys[event.key.toLowerCase()] = false);
-
-    const orbs = [];
-    const orbMaterial = new BABYLON.StandardMaterial("orbMaterial", scene);
-    orbMaterial.diffuseColor = new BABYLON.Color3(1, 0.75, 0.1);
-    orbMaterial.emissiveColor = new BABYLON.Color3(0.35, 0.2, 0);
-
-    for (let i = 0; i < 8; i++) {
-      const orb = BABYLON.MeshBuilder.CreateSphere(
-        "orb" + i,
-        { diameter: 0.65 },
-        scene
-      );
-
-      orb.position.set(
-        Math.random() * 16 - 8,
-        0.45,
-        Math.random() * 16 - 8
-      );
-      orb.material = orbMaterial;
-      orbs.push(orb);
+    function material(name, color, glow = 0) {
+      const m = new BABYLON.StandardMaterial(name, scene);
+      m.diffuseColor = color;
+      m.emissiveColor = color.scale(glow);
+      return m;
     }
 
-    let score = 0;
-    const scoreElement = document.getElementById("score");
+    const playerMat = material("playerMat", new BABYLON.Color3(0.2, 0.55, 1), 0.25);
+    const enemyMat = material("enemyMat", new BABYLON.Color3(1, 0.22, 0.3), 0.15);
+    const orbMat = material("orbMat", new BABYLON.Color3(1, 0.78, 0.16), 0.8);
 
-    engine.runRenderLoop(() => {
-      const speed = 0.12;
+    const player = BABYLON.MeshBuilder.CreateSphere("player", { diameter: 1.05, segments: 16 }, scene);
+    player.position.y = 0.65;
+    player.material = playerMat;
 
-      if (keys["w"] || keys["arrowup"]) player.position.z -= speed;
-      if (keys["s"] || keys["arrowdown"]) player.position.z += speed;
-      if (keys["a"] || keys["arrowleft"]) player.position.x -= speed;
-      if (keys["d"] || keys["arrowright"]) player.position.x += speed;
+    const ring = BABYLON.MeshBuilder.CreateTorus("ring", { diameter: 1.55, thickness: 0.06 }, scene);
+    ring.position.y = 0.12;
+    ring.rotation.x = Math.PI / 2;
+    ring.material = material("ringMat", new BABYLON.Color3(0.25, 0.7, 1), 0.7);
 
-      player.position.x = BABYLON.Scalar.Clamp(player.position.x, -9, 9);
-      player.position.z = BABYLON.Scalar.Clamp(player.position.z, -9, 9);
+    const keys = {};
+    const enemies = [];
+    const orbs = [];
+    const pops = [];
+    const dust = new BABYLON.ParticleSystem("dust", 350, scene);
+    dust.particleTexture = new BABYLON.Texture("https://playground.babylonjs.com/textures/flare.png", scene);
+    dust.emitter = player;
+    dust.minEmitBox = new BABYLON.Vector3(-0.15, 0, -0.15);
+    dust.maxEmitBox = new BABYLON.Vector3(0.15, 0.1, 0.15);
+    dust.color1 = new BABYLON.Color4(0.2, 0.6, 1, 0.7);
+    dust.color2 = new BABYLON.Color4(0.7, 0.9, 1, 0.4);
+    dust.minSize = 0.04; dust.maxSize = 0.15;
+    dust.minLifeTime = 0.15; dust.maxLifeTime = 0.45;
+    dust.emitRate = 0;
 
+    let hp, xp, level, score, wave, enemyCount, speed, damage, blastRadius;
+    let dashTimer = 0, blastTimer = 0, spawnTimer = 0;
+    let running = false, paused = false, lastTime = 0;
+    const arena = 14;
+
+    const $ = id => document.getElementById(id);
+    const overlay = $("overlay");
+
+    function updateHud() {
+      $("hpText").textContent = Math.max(0, Math.ceil(hp));
+      $("healthFill").style.width = Math.max(0, hp) + "%";
+      $("xpText").textContent = `${xp} / ${level * 5}`;
+      $("xpFill").style.width = (xp / (level * 5) * 100) + "%";
+      $("levelText").textContent = level;
+      $("waveText").textContent = wave;
+      $("scoreText").textContent = score;
+    }
+
+    function startGame() {
+      enemies.forEach(e => e.mesh.dispose());
+      orbs.forEach(o => o.mesh.dispose());
+      enemies.length = 0;
+      orbs.length = 0;
+
+      hp = 100; xp = 0; level = 1; score = 0; wave = 1;
+      enemyCount = 5; speed = 0.11; damage = 1; blastRadius = 4;
+      dashTimer = 0; blastTimer = 0; spawnTimer = 0;
+      player.position.set(0, 0.65, 0);
+      running = true; paused = false;
+      $("mainButton").style.display = "none";
+      $("upgradeButtons").innerHTML = "";
+      overlay.style.display = "none";
+      updateHud();
+      for (let i = 0; i < enemyCount; i++) spawnEnemy();
+    }
+
+    function spawnEnemy() {
+      const mesh = BABYLON.MeshBuilder.CreateSphere("enemy", { diameter: 0.85 }, scene);
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 10 + Math.random() * 3;
+      mesh.position.set(Math.cos(angle) * radius, 0.5, Math.sin(angle) * radius);
+      mesh.material = enemyMat;
+      enemies.push({ mesh, hp: 1 + Math.floor(wave / 3), hit: 0 });
+    }
+
+    function spawnOrb(position) {
+      const mesh = BABYLON.MeshBuilder.CreateSphere("orb", { diameter: 0.38 }, scene);
+      mesh.position.copyFrom(position);
+      mesh.position.y = 0.45;
+      mesh.material = orbMat;
+      orbs.push({ mesh });
+    }
+
+    function pop(position, color) {
+      const p = BABYLON.MeshBuilder.CreateSphere("pop", { diameter: 0.35 }, scene);
+      p.position.copyFrom(position);
+      p.material = material("popMat" + Math.random(), color, 0.8);
+      pops.push({ mesh: p, life: 0.25 });
+    }
+
+    function collectOrb(index) {
+      const o = orbs[index];
+      xp++;
+      score += 10;
+      pop(o.mesh.position, new BABYLON.Color3(1, 0.8, 0.2));
+      o.mesh.dispose();
+      orbs.splice(index, 1);
+
+      if (xp >= level * 5) {
+        xp = 0;
+        level++;
+        showUpgrade();
+      }
+      updateHud();
+    }
+
+    function showUpgrade() {
+      running = false;
+      overlay.style.display = "grid";
+      $("title").textContent = "LEVEL UP";
+      $("message").textContent = "Pick one upgrade.";
+      $("mainButton").style.display = "none";
+      const options = [
+        ["More health", () => hp = Math.min(100, hp + 35)],
+        ["Faster movement", () => speed += 0.025],
+        ["Stronger shockwave", () => { damage++; blastRadius += 0.7; }]
+      ];
+      $("upgradeButtons").innerHTML = "";
+      options.forEach(([label, effect]) => {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.onclick = () => {
+          effect();
+          $("upgradeButtons").innerHTML = "";
+          overlay.style.display = "none";
+          running = true;
+          updateHud();
+        };
+        $("upgradeButtons").appendChild(b);
+      });
+    }
+
+    function endGame() {
+      running = false;
+      overlay.style.display = "grid";
+      $("title").textContent = "RUN OVER";
+      $("message").textContent = `You reached wave ${wave} and scored ${score}.`;
+      $("upgradeButtons").innerHTML = "";
+      $("mainButton").textContent = "Play again";
+      $("mainButton").style.display = "inline-block";
+    }
+
+    function shockwave() {
+      if (blastTimer > 0) return;
+      blastTimer = 2.5;
+      pop(player.position, new BABYLON.Color3(0.2, 0.65, 1));
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        if (BABYLON.Vector3.Distance(player.position, e.mesh.position) < blastRadius) {
+          e.hp -= damage;
+          e.hit = 0.15;
+          if (e.hp <= 0) {
+            spawnOrb(e.mesh.position);
+            e.mesh.dispose();
+            enemies.splice(i, 1);
+            score += 5;
+          }
+        }
+      }
+      updateHud();
+    }
+
+    window.addEventListener("keydown", e => {
+      keys[e.key.toLowerCase()] = true;
+      if (e.code === "Space") { e.preventDefault(); if (running) shockwave(); }
+      if (e.key.toLowerCase() === "p" && !overlay.style.display.includes("grid")) {
+        paused = !paused;
+        running = !paused;
+        if (paused) {
+          overlay.style.display = "grid";
+          $("title").textContent = "PAUSED";
+          $("message").textContent = "Take a breather.";
+          $("mainButton").textContent = "Resume";
+          $("mainButton").style.display = "inline-block";
+          $("upgradeButtons").innerHTML = "";
+        } else overlay.style.display = "none";
+      }
+    });
+    window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+    $("mainButton").onclick = () => {
+      if (paused) {
+        paused = false; running = true; overlay.style.display = "none";
+      } else startGame();
+    };
+
+    const map = $("minimap");
+    const ctx = map.getContext("2d");
+
+    function drawMap() {
+      ctx.clearRect(0, 0, 130, 130);
+      ctx.fillStyle = "#131c2b";
+      ctx.fillRect(0, 0, 130, 130);
+      const dot = (x, z, color, r) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(65 + x * 4, 65 + z * 4, r, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      orbs.forEach(o => dot(o.mesh.position.x, o.mesh.position.z, "#ffd34d", 2));
+      enemies.forEach(e => dot(e.mesh.position.x, e.mesh.position.z, "#ff5366", 3));
+      dot(player.position.x, player.position.z, "#65b7ff", 4);
+    }
+
+    scene.onBeforeRenderObservable.add(() => {
+      const now = performance.now();
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+      if (!running) return;
+
+      dashTimer = Math.max(0, dashTimer - dt);
+      blastTimer = Math.max(0, blastTimer - dt);
+      spawnTimer += dt;
+
+      let dx = 0, dz = 0;
+      if (keys["w"] || keys["arrowup"]) dz--;
+      if (keys["s"] || keys["arrowdown"]) dz++;
+      if (keys["a"] || keys["arrowleft"]) dx--;
+      if (keys["d"] || keys["arrowright"]) dx++;
+
+      const moving = dx !== 0 || dz !== 0;
+      if (moving) {
+        const length = Math.hypot(dx, dz);
+        dx /= length; dz /= length;
+        const boost = keys["shift"] && dashTimer <= 0 ? 3.5 : 1;
+        if (boost > 1) dashTimer = 1.2;
+        player.position.x += dx * speed * boost * dt * 60;
+        player.position.z += dz * speed * boost * dt * 60;
+        player.rotation.y = Math.atan2(dx, dz);
+      }
+
+      player.position.x = BABYLON.Scalar.Clamp(player.position.x, -arena, arena);
+      player.position.z = BABYLON.Scalar.Clamp(player.position.z, -arena, arena);
+      ring.position.x = player.position.x;
+      ring.position.z = player.position.z;
       camera.target.x = player.position.x;
       camera.target.z = player.position.z;
+      dust.emitRate = moving ? 35 : 0;
+      ring.rotation.z += dt * 1.2;
 
-      for (const orb of orbs) {
-        if (orb.isEnabled() &&
-            BABYLON.Vector3.Distance(player.position, orb.position) < 0.85) {
-          orb.setEnabled(false);
-          score++;
-          scoreElement.textContent = score;
+      for (let i = orbs.length - 1; i >= 0; i--) {
+        orbs[i].mesh.rotation.y += dt * 2;
+        if (BABYLON.Vector3.Distance(player.position, orbs[i].mesh.position) < 0.8) collectOrb(i);
+      }
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        const dir = player.position.subtract(e.mesh.position);
+        dir.y = 0;
+        const dist = dir.length();
+        if (dist > 0.01) {
+          dir.normalize();
+          e.mesh.position.addInPlace(dir.scale((0.035 + wave * 0.002) * dt * 60));
+        }
+        e.mesh.position.y = 0.5 + Math.sin(now / 180 + i) * 0.08;
+
+        if (dist < 1.1) {
+          hp -= 18 * dt;
+          if (hp <= 0) { hp = 0; updateHud(); endGame(); break; }
         }
       }
 
-      if (score === 8) {
-        document.getElementById("hud").textContent = "All orbs collected.";
+      if (enemies.length === 0 && spawnTimer > 1.2) {
+        wave++;
+        enemyCount = Math.min(5 + wave * 2, 30);
+        for (let i = 0; i < enemyCount; i++) spawnEnemy();
+        spawnTimer = 0;
+        updateHud();
       }
 
-      scene.render();
+      for (let i = pops.length - 1; i >= 0; i--) {
+        pops[i].life -= dt;
+        pops[i].mesh.scaling.scaleInPlace(1.12);
+        if (pops[i].life <= 0) {
+          pops[i].mesh.material.dispose();
+          pops[i].mesh.dispose();
+          pops.splice(i, 1);
+        }
+      }
+
+      updateHud();
+      drawMap();
     });
 
+    engine.runRenderLoop(() => scene.render());
     window.addEventListener("resize", () => engine.resize());
+  </script>
+</body>
+</html>
+resize", () => engine.resize());
   </script>
 </body>
 </html>
